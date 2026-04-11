@@ -5,6 +5,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/annasblackhat/trading-alert/internal/api"
 	"github.com/annasblackhat/trading-alert/internal/bot"
 	"github.com/annasblackhat/trading-alert/internal/indicator"
@@ -22,6 +24,11 @@ const (
 )
 
 func main() {
+	// Load .env file. If it doesn't exist, we just rely on system environment variables.
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("   ℹ️  No .env file found or error reading it, using system environment variables")
+	}
+
 	fmt.Println("🚀 Modular Strategy Bot started (BTCUSDT 5m) - Long Only")
 	fmt.Println("   Polling every 15s | Clean Architecture implementation")
 
