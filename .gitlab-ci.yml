@@ -1,22 +1,47 @@
 stages:
+  - build
   - deploy
 
+variables:
+  IMAGE_NAME: $CI_REGISTRY_IMAGE/trading-bot
+  IMAGE_TAG: $CI_COMMIT_REF_SLUG
+
+# 1. Build the image using GitLab's Public Runners
+build_image:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+    - docker push $IMAGE_NAME:$IMAGE_TAG
+  only:
+    - main
+    - dev
+
+# 2. Pull and Run on your VPS
 deploy_to_vps:
   stage: deploy
   tags:
     - annas-dev
   script:
-    - echo "Building the Docker image..."
-    - docker build -t trading-bot:latest .
+    - echo "Logging into registry on VPS..."
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     
-    - echo "Stopping down existing container if it exists..."
+    - echo "Pulling latest image..."
+    - docker pull $IMAGE_NAME:$IMAGE_TAG
+    
+    - echo "Stopping existing container..."
     - docker stop active-trading-bot || true
     - docker rm active-trading-bot || true
     
     - echo "Starting new container..."
-    # Note: TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID should be securely added to your GitLab project's 
-    # Settings > CI/CD > Variables. They will be passed automatically into this container.
-    - docker run -d --name active-trading-bot -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" --restart unless-stopped trading-bot:latest
+    - docker run -d --name active-trading-bot \
+        -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
+        -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
+        --restart unless-stopped \
+        $IMAGE_NAME:$IMAGE_TAG
     
     - echo "Deployment successful!"
   only:
