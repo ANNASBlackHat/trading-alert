@@ -23,6 +23,7 @@ build_image:
 # 2. Pull and Run on your VPS
 deploy_to_vps:
   stage: deploy
+  image: docker/compose:1.25.5
   tags:
     - annas-dev
   script:
