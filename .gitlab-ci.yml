@@ -40,8 +40,6 @@ deploy_to_vps:
     
     - echo "Starting new container..."
     - docker run -d --name active-trading-bot \
-        -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
-        -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
         --restart unless-stopped \
         registry.gitlab.com/annasblackhat/trading-alert/trading-bot:dev
     
