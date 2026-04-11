@@ -43,7 +43,7 @@ deploy_to_vps:
         -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" \
         -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" \
         --restart unless-stopped \
-        $IMAGE_NAME:$IMAGE_TAG
+        registry.gitlab.com/annasblackhat/trading-alert/trading-bot:dev
     
     - echo "Deployment successful!"
   rules:
