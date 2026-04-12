@@ -39,7 +39,7 @@ deploy_to_vps:
     - docker rm active-trading-bot || true
     
     - echo "Starting new container..."
-    - docker run -d --name active-trading-bot -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" --restart unless-stopped $IMAGE_NAME:$IMAGE_TAG
+    - docker run -d --name active-trading-bot -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" --restart unless-stopped -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
     
     - echo "Deployment successful!"
   rules:
