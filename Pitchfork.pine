@@ -1,0 +1,79 @@
+//@version=5
+indicator("The Pitchfork Strategy - BTC Spot (Long Only)", overlay=true, max_lines_count=50)
+
+// ==============================================================================
+// 1. SETTINGS & INPUTS
+// ==============================================================================
+grp_htf = "Higher Timeframe Magic Lines"
+htf = input.timeframe("60", title="HTF for Magic Lines", group=grp_htf)
+pivotLength = input.int(15, title="Swing Lookback (Bars)", minval=5, group=grp_htf, tooltip="How far back to look for major 1H swing highs/lows.")
+zoneTolerance = input.float(0.3, title="Zone Tolerance (%)", step=0.1, group=grp_htf, tooltip="How close the 5m price needs to get to the 1H line to be considered a 'touch'.") / 100
+
+grp_ltf = "Lower Timeframe (5-Min) Trigger"
+suckerCandles = input.int(3, title="Min. Red Candles for Sucker Move", minval=2, maxval=10, group=grp_ltf)
+
+// ==============================================================================
+// 2. CALCULATE HTF "MAGIC LINES" (LIQUIDITY ZONES)
+// ==============================================================================
+// Fetch the HTF high and low
+htf_high = request.security(syminfo.tickerid, htf, high)
+htf_low = request.security(syminfo.tickerid, htf, low)
+
+// Calculate HTF Pivots (Swing Highs and Lows)
+var float magicLine_upper = na
+var float magicLine_lower = na
+
+ph = ta.pivothigh(htf_high, pivotLength, pivotLength)
+pl = ta.pivotlow(htf_low, pivotLength, pivotLength)
+
+if not na(ph)
+    magicLine_upper := ph
+if not na(pl)
+    magicLine_lower := pl
+
+// Plot the Magic Lines
+plot(magicLine_upper, color=color.new(color.red, 40), title="Upper Magic Line (Take Profit)", style=plot.style_linebr, linewidth=2)
+plot(magicLine_lower, color=color.new(color.green, 40), title="Lower Magic Line (Buy Zone)", style=plot.style_linebr, linewidth=2)
+
+// ==============================================================================
+// 3. DETECT THE "SUCKER MOVE" & ZONE INTERACTION
+// ==============================================================================
+// Calculate if the previous N candles were strictly RED
+isRed = close < open ? 1 : 0
+consecutiveReds = math.sum(isRed[1], suckerCandles) // Check previous candles, not current
+isSuckerMove = (consecutiveReds == suckerCandles)
+
+// Define the Support Zone boundary based on tolerance
+supZone_upperBound = magicLine_lower * (1 + zoneTolerance)
+
+// Did the Sucker Move drop into our HTF Support zone?
+lowestDuringDrop = ta.lowest(low[1], suckerCandles)
+touchedZone = (lowestDuringDrop <= supZone_upperBound) and (lowestDuringDrop > 0)
+
+// ==============================================================================
+// 4. THE "PITCHFORK" ENTRY CONFIRMATION
+// ==============================================================================
+// Current candle must be GREEN (Buyers stepping in)
+isGreen = close > open
+
+// Trigger condition: Green candle + Sucker Move happened + Touched the Zone
+pitchforkTrigger = isGreen and isSuckerMove and touchedZone
+
+// ==============================================================================
+// 5. VISUALS & ALERTS
+// ==============================================================================
+// Plot an arrow below the Pitchfork candle
+plotshape(pitchforkTrigger, title="Pitchfork Buy Setup", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.normal, text="PITCHFORK\nBUY")
+
+// Draw Entry and Stop Loss reference lines when triggered
+if pitchforkTrigger
+    entryPrice = high
+    slPrice = math.min(low, lowestDuringDrop) // SL goes below the lowest wick of the crash
+    
+    // Draw Entry Line (Blue)
+    line.new(x1=bar_index[1], y1=entryPrice, x2=bar_index+10, y2=entryPrice, color=color.blue, width=2, style=line.style_dashed)
+    // Draw Stop Loss Line (Red)
+    line.new(x1=bar_index[1], y1=slPrice, x2=bar_index+10, y2=slPrice, color=color.red, width=2, style=line.style_dashed)
+
+// Setup the Alert
+alertcondition(pitchforkTrigger, title="Pitchfork Buy Alert!", message="BTC Sucker Move exhausted in 1H Liquidity Zone. Green 5m Pitchfork closed. Set Buy Stop above the high, SL below the low!")
