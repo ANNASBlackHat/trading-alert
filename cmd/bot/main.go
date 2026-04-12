@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -29,8 +30,14 @@ func main() {
 		fmt.Println("   ℹ️  No .env file found or error reading it, using system environment variables")
 	}
 
-	fmt.Println("🚀 Modular Strategy Bot started (BTCUSDT 5m) - Long Only")
-	fmt.Println("   Polling every 15s | Clean Architecture implementation")
+	// Setup structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
+
+	slog.Info("Modular Strategy Bot started (BTCUSDT 5m) - Long Only", "polling_interval", pollInterval)
+	slog.Info("Clean Architecture implementation")
 
 	// 1. Setup API Client
 	client := api.NewBinanceClient(symbol)

@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/annasblackhat/trading-alert/internal/api"
@@ -35,23 +36,23 @@ func (b *Bot) RunCycle() {
 	// 1. Fetch HTF
 	htfKlines, err := b.Client.FetchKlines(b.HTFInterval, 500)
 	if err != nil {
-		fmt.Printf("❌ HTF fetch error: %v\n", err)
+		slog.Error("HTF fetch error", "err", err)
 		return
 	}
 
 	// 2. Fetch LTF
 	ltfKlines, err := b.Client.FetchKlines(b.LTFInterval, 100)
 	if err != nil {
-		fmt.Printf("❌ LTF fetch error: %v\n", err)
+		slog.Error("LTF fetch error", "err", err)
 		return
 	}
 
 	// 3. Current price for proximity alerts
 	currentPrice := b.Client.GetCurrentPrice()
-	fmt.Printf("currentPrice: %v\n", currentPrice)
+	slog.Info("current price check", slog.Float64("current_price", currentPrice))
 
 	if len(ltfKlines) == 0 {
-		fmt.Printf("❌ LTF klines is empty\n")
+		slog.Error("LTF klines is empty")
 		return
 	}
 
@@ -67,10 +68,10 @@ func (b *Bot) RunCycle() {
 	b.lastCandleTime = latest.OpenTime
 
 	signal := b.Indicator.Analyze(htfKlines, ltfKlines)
-	fmt.Printf("signal, trigger: %v\n", signal.Trigger)
+	slog.Info("indicator analysis finished", slog.Bool("trigger", signal.Trigger))
 
 	if signal.Trigger {
-		fmt.Println("✅ SIGNAL DETECTED!")
+		slog.Info("SIGNAL DETECTED!")
 
 		msg := fmt.Sprintf(`🚨 ALERT DETECTED!
 Sucker move exhausted in Liquidity Zone

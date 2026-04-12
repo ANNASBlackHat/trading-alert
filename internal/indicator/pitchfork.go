@@ -1,7 +1,7 @@
 package indicator
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/annasblackhat/trading-alert/internal/model"
 )
@@ -63,10 +63,15 @@ func (p *Pitchfork) Analyze(htfKlines []model.Kline, ltfKlines []model.Kline) mo
 	touchedZone := lowestDuringDrop <= supZoneUpperBound && lowestDuringDrop > 0
 
 	trigger := isGreen && isSuckerMove && touchedZone
-	fmt.Printf("trigger: %v\n", trigger)
-	fmt.Printf("isGreen: %v\n", isGreen)
-	fmt.Printf("isSuckerMove: %v\n", isSuckerMove)
-	fmt.Printf("touchedZone: %v\n", touchedZone)
+	slog.Info("pitchfork indicator analysis",
+		slog.Bool("trigger", trigger),
+		slog.Bool("is_green", isGreen),
+		slog.Bool("is_sucker_move", isSuckerMove),
+		slog.Bool("touched_zone", touchedZone),
+		slog.Float64("lowest_during_drop", lowestDuringDrop),
+		slog.Float64("magic_lower", magicLower),
+		slog.Float64("sup_zone_upper_bound", supZoneUpperBound),
+	)
 
 	entryPrice := current.High
 	slPrice := current.Low
