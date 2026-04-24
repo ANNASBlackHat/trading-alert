@@ -36,14 +36,15 @@ func (p *Pitchfork) Analyze(htfKlines []model.Kline, ltfKlines []model.Kline) mo
 		return model.TradeSignal{Trigger: false}
 	}
 
-	current := ltfKlines[n-1] // just-closed 5m candle
+	// klines[n-1] is the OPEN/unclosed candle — skip it
+	current := ltfKlines[n-2] // just-closed 5m candle
 
 	// isGreen = current candle must be green
 	isGreen := current.Close > current.Open
 
 	// Sucker Move: previous 'suckerCandles' must ALL be red
 	isSuckerMove := true
-	for i := n - 1 - p.SuckerCandles; i < n-1; i++ {
+	for i := n - 2 - p.SuckerCandles; i < n-2; i++ {
 		if ltfKlines[i].Close >= ltfKlines[i].Open {
 			isSuckerMove = false
 			break
@@ -51,8 +52,8 @@ func (p *Pitchfork) Analyze(htfKlines []model.Kline, ltfKlines []model.Kline) mo
 	}
 
 	// lowest low during the sucker move (previous N candles)
-	lowestDuringDrop := ltfKlines[n-1-1].Low
-	for i := n - 1 - p.SuckerCandles; i < n-1; i++ {
+	lowestDuringDrop := ltfKlines[n-3].Low
+	for i := n - 2 - p.SuckerCandles; i < n-2; i++ {
 		if ltfKlines[i].Low < lowestDuringDrop {
 			lowestDuringDrop = ltfKlines[i].Low
 		}

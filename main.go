@@ -138,6 +138,41 @@ Signal time: %s`, entryPrice, slPrice, magicUpper, time.Now().Format(time.RFC333
 
 func checkPitchforkTrigger(klines []Kline) (bool, float64, float64, float64) {
 	n := len(klines)
+	// klines[n-1] is the OPEN/unclosed candle — skip it
+	current := klines[n-2] // ← use the just-CLOSED candle
+
+	isGreen := current.Close > current.Open
+
+	isSuckerMove := true
+	for i := n - 2 - suckerCandles; i < n-2; i++ { // ← shifted range
+		if klines[i].Close >= klines[i].Open {
+			isSuckerMove = false
+			break
+		}
+	}
+
+	lowestDuringDrop := klines[n-3].Low
+	for i := n - 2 - suckerCandles; i < n-2; i++ { // ← shifted range
+		if klines[i].Low < lowestDuringDrop {
+			lowestDuringDrop = klines[i].Low
+		}
+	}
+
+	supZoneUpperBound := magicLower * (1 + zoneTolerance)
+	touchedZone := lowestDuringDrop <= supZoneUpperBound && lowestDuringDrop > 0
+
+	trigger := isGreen && isSuckerMove && touchedZone
+	entryPrice := current.High
+	slPrice := current.Low
+	if lowestDuringDrop < slPrice {
+		slPrice = lowestDuringDrop
+	}
+
+	return trigger, lowestDuringDrop, entryPrice, slPrice
+}
+
+func checkPitchforkTriggerV0(klines []Kline) (bool, float64, float64, float64) {
+	n := len(klines)
 	current := klines[n-1] // just-closed 5m candle
 
 	// isGreen = current candle must be green
