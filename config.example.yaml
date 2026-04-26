@@ -1,0 +1,29 @@
+# Trading Alert Bot Configuration
+# Copy this file to config.yaml and update values as needed.
+
+poll_interval_sec: 15
+
+telegram:
+  token: "your-telegram-bot-token"
+  chat_id: "your-telegram-chat-id"
+
+bots:
+  - name: "BTC-1h/5m"
+    symbol: BTCUSDT
+    exchange: binance
+    htf_interval: "1h"
+    ltf_interval: "5m"
+    pivot_length: 15
+    sucker_candles: 3
+    zone_tolerance: 0.003
+    indicator: pitchfork
+
+  - name: "BTC-1d/15m"
+    symbol: BTCUSDT
+    exchange: binance
+    htf_interval: "1d"
+    ltf_interval: "15m"
+    pivot_length: 15
+    sucker_candles: 3
+    zone_tolerance: 0.003
+    indicator: pitchfork

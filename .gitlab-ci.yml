@@ -38,8 +38,15 @@ deploy_to_vps:
     - docker stop active-trading-bot || true
     - docker rm active-trading-bot || true
     
+    - echo "Creating config.yaml from CI variable..."
+    - echo "$CONFIG_YAML" > config.yaml
+    
     - echo "Starting new container..."
-    - docker run -d --name active-trading-bot -e TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" -e TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID" --restart unless-stopped -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
+    - docker run -d --name active-trading-bot \
+        --restart unless-stopped \
+        -v $(pwd)/config.yaml:/app/config.yaml \
+        -p 16261:8080 \
+        $IMAGE_NAME:$IMAGE_TAG
     
     - echo "Deployment successful!"
   rules:

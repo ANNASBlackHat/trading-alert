@@ -11,23 +11,11 @@ import (
 
 	"github.com/annasblackhat/trading-alert/internal/api"
 	"github.com/annasblackhat/trading-alert/internal/bot"
+	"github.com/annasblackhat/trading-alert/internal/config"
 	"github.com/annasblackhat/trading-alert/internal/indicator"
 	"github.com/annasblackhat/trading-alert/internal/notifier"
 	"github.com/annasblackhat/trading-alert/internal/server"
 	"github.com/annasblackhat/trading-alert/internal/telemetry"
-)
-
-const (
-	symbol         = "BTCUSDT"
-	htfInterval    = "1h"  // Higher Timeframe for Magic Lines
-	ltfInterval    = "5m"  // Lower Timeframe (where trigger lives)
-	htfInterval2   = "1d"  // Higher Timeframe for Magic Lines
-	ltfInterval2   = "15m" // Lower Timeframe (where trigger lives)
-	pollInterval   = 15 * time.Second
-	pivotLength    = 15    // same as Pine pivotLength
-	suckerCandles  = 3     // same as Pine
-	zoneTolerance  = 0.003 // 0.3% as in Pine
-	zoneTolerance2 = 0.003 // 0.3% as in Pine
 )
 
 func main() {
@@ -54,24 +42,72 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	slog.Info("Modular Strategy Bot started (BTCUSDT 5m) - Long Only", "polling_interval", pollInterval)
-	slog.Info("Clean Architecture implementation and multi-writer log rotation enabled")
+	// Load YAML config
+	cfg, err := config.Load("config.yaml")
+	if err != nil {
+		slog.Error("failed to load config", slog.Any("error", err))
+		os.Exit(1)
+	}
 
-	// 1. Setup API Client
-	client := api.NewBinanceClient(symbol)
+	slog.Info("Multi-Bot Trading Alert started",
+		"bot_count", len(cfg.Bots),
+		"poll_interval_sec", cfg.PollIntervalSec,
+	)
 
-	// 2. Setup Indicator
-	pitchfork := indicator.NewPitchfork(pivotLength, suckerCandles, zoneTolerance)
-
-	// 3. Setup Notifier
-	tgToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	tgChatID := os.Getenv("TELEGRAM_CHAT_ID")
+	// Shared Notifier (single Telegram channel for all bots)
+	tgToken := cfg.Telegram.Token
+	tgChatID := cfg.Telegram.ChatID
+	// Allow env vars to override config file values
+	if envToken := os.Getenv("TELEGRAM_BOT_TOKEN"); envToken != "" {
+		tgToken = envToken
+	}
+	if envChatID := os.Getenv("TELEGRAM_CHAT_ID"); envChatID != "" {
+		tgChatID = envChatID
+	}
 	telegramNotifier := notifier.NewTelegramNotifier(tgToken, tgChatID)
 
-	// 4. Setup Bot Orchestrator
-	tradingBot := bot.NewBot(client, pitchfork, telegramNotifier, htfInterval, ltfInterval)
+	// Build bots from config
+	bots := make([]*bot.Bot, 0, len(cfg.Bots))
+	for _, bc := range cfg.Bots {
+		// Factory: resolve exchange client
+		var client api.MarketClient
+		switch bc.Exchange {
+		case "binance":
+			client = api.NewBinanceClient(bc.Symbol)
+		default:
+			slog.Error("unknown exchange, skipping bot", "exchange", bc.Exchange, "bot", bc.Name)
+			continue
+		}
 
-	// 5. Setup Telemetry & Server
+		// Factory: resolve indicator
+		var ind indicator.Indicator
+		switch bc.Indicator {
+		case "pitchfork":
+			ind = indicator.NewPitchfork(bc.PivotLength, bc.SuckerCandles, bc.ZoneTolerance)
+		default:
+			slog.Error("unknown indicator, skipping bot", "indicator", bc.Indicator, "bot", bc.Name)
+			continue
+		}
+
+		b := bot.NewBot(bc.Name, client, ind, telegramNotifier, bc.HTFInterval, bc.LTFInterval)
+		bots = append(bots, b)
+
+		slog.Info("bot configured",
+			"name", bc.Name,
+			"symbol", bc.Symbol,
+			"exchange", bc.Exchange,
+			"htf", bc.HTFInterval,
+			"ltf", bc.LTFInterval,
+			"indicator", bc.Indicator,
+		)
+	}
+
+	if len(bots) == 0 {
+		slog.Error("no bots configured, exiting")
+		os.Exit(1)
+	}
+
+	// Setup Telemetry & Server
 	logProvider := telemetry.NewFileLogProvider(logFilePath)
 	apiServer := server.NewServer("8080", logProvider)
 
@@ -82,14 +118,8 @@ func main() {
 		}
 	}()
 
-	// 6. Start Polling Loop
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
-
-	// Run once immediately before ticker
-	tradingBot.RunCycle()
-
-	for range ticker.C {
-		tradingBot.RunCycle()
-	}
+	// Start all bots concurrently
+	pollDuration := time.Duration(cfg.PollIntervalSec) * time.Second
+	runner := bot.NewBotRunner(pollDuration, bots...)
+	runner.Run() // blocks forever
 }

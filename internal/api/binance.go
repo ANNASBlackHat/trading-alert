@@ -11,15 +11,18 @@ import (
 )
 
 type BinanceClient struct {
-	Symbol string
+	symbol string
 }
 
 func NewBinanceClient(symbol string) *BinanceClient {
-	return &BinanceClient{Symbol: symbol}
+	return &BinanceClient{symbol: symbol}
 }
 
+// Symbol returns the trading symbol (satisfies MarketClient interface).
+func (c *BinanceClient) Symbol() string { return c.symbol }
+
 func (c *BinanceClient) FetchKlines(interval string, limit int) ([]model.Kline, error) {
-	url := fmt.Sprintf("https://data-api.binance.vision/api/v3/klines?symbol=%s&interval=%s&limit=%d", c.Symbol, interval, limit)
+	url := fmt.Sprintf("https://data-api.binance.vision/api/v3/klines?symbol=%s&interval=%s&limit=%d", c.symbol, interval, limit)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -50,7 +53,7 @@ func (c *BinanceClient) FetchKlines(interval string, limit int) ([]model.Kline, 
 }
 
 func (c *BinanceClient) GetCurrentPrice() float64 {
-	url := "https://data-api.binance.vision/api/v3/ticker/price?symbol=" + c.Symbol
+	url := "https://data-api.binance.vision/api/v3/ticker/price?symbol=" + c.symbol
 	resp, err := http.Get(url)
 	if err != nil {
 		return 0
