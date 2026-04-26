@@ -18,13 +18,16 @@ import (
 )
 
 const (
-	symbol        = "BTCUSDT"
-	htfInterval   = "1h" // Higher Timeframe for Magic Lines
-	ltfInterval   = "5m" // Lower Timeframe (where trigger lives)
-	pollInterval  = 15 * time.Second
-	pivotLength   = 15    // same as Pine pivotLength
-	suckerCandles = 3     // same as Pine
-	zoneTolerance = 0.003 // 0.3% as in Pine
+	symbol         = "BTCUSDT"
+	htfInterval    = "1h"  // Higher Timeframe for Magic Lines
+	ltfInterval    = "5m"  // Lower Timeframe (where trigger lives)
+	htfInterval2   = "1d"  // Higher Timeframe for Magic Lines
+	ltfInterval2   = "15m" // Lower Timeframe (where trigger lives)
+	pollInterval   = 15 * time.Second
+	pivotLength    = 15    // same as Pine pivotLength
+	suckerCandles  = 3     // same as Pine
+	zoneTolerance  = 0.003 // 0.3% as in Pine
+	zoneTolerance2 = 0.003 // 0.3% as in Pine
 )
 
 func main() {
@@ -39,7 +42,7 @@ func main() {
 		Filename:   logFilePath,
 		MaxSize:    10, // megabytes
 		MaxBackups: 3,
-		MaxAge:     28, // days
+		MaxAge:     28,   // days
 		Compress:   true, // disabled by default
 	}
 	defer lumberjackLogger.Close()

@@ -81,7 +81,11 @@ Entry: Buy Stop above %.2f
 SL: below %.2f
 TP Zone: %.2f (Red Magic Line)
 
-Signal time: %s`, signal.EntryPrice, signal.SLPrice, signal.TPPrice, time.Now().Format(time.RFC3339))
+Signal time: %s
+
+Config:
+High Interval: %v,
+Low Interval: %v`, signal.EntryPrice, signal.SLPrice, signal.TPPrice, time.Now().Format(time.RFC3339), b.HTFInterval, b.LTFInterval)
 
 		_ = b.Notifier.Send(msg)
 
