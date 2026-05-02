@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -19,6 +20,8 @@ import (
 )
 
 func main() {
+	fmt.Println("--------------------- TradingAlert Starting ---------------------")
+	fmt.Println("                       Welcome Back, Master                      ")
 	// Load .env file. If it doesn't exist, we just rely on system environment variables.
 	if err := godotenv.Load(); err != nil {
 		// Just silently proceed if no .env
