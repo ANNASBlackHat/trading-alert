@@ -66,6 +66,16 @@ func main() {
 	}
 	telegramNotifier := notifier.NewTelegramNotifier(tgToken, tgChatID)
 
+	// Resolve Alpaca credentials (from config, with env override)
+	alpacaKey := cfg.Alpaca.APIKey
+	alpacaSecret := cfg.Alpaca.SecretKey
+	if envKey := os.Getenv("ALPACA_API_KEY"); envKey != "" {
+		alpacaKey = envKey
+	}
+	if envSecret := os.Getenv("ALPACA_SECRET_KEY"); envSecret != "" {
+		alpacaSecret = envSecret
+	}
+
 	// Build bots from config
 	bots := make([]*bot.Bot, 0, len(cfg.Bots))
 	for _, bc := range cfg.Bots {
@@ -74,6 +84,8 @@ func main() {
 		switch bc.Exchange {
 		case "binance":
 			client = api.NewBinanceClient(bc.Symbol)
+		case "alpaca":
+			client = api.NewAlpacaClient(bc.Symbol, alpacaKey, alpacaSecret)
 		default:
 			slog.Error("unknown exchange, skipping bot", "exchange", bc.Exchange, "bot", bc.Name)
 			continue
@@ -84,6 +96,18 @@ func main() {
 		switch bc.Indicator {
 		case "pitchfork":
 			ind = indicator.NewPitchfork(bc.PivotLength, bc.SuckerCandles, bc.ZoneTolerance)
+		case "session_range":
+			ind = indicator.NewSessionRange(indicator.SessionRangeConfig{
+				AsiaStart:      bc.AsiaStart,
+				AsiaEnd:        bc.AsiaEnd,
+				LondonStart:    bc.LondonStart,
+				LondonEnd:      bc.LondonEnd,
+				NYStart:        bc.NYStart,
+				NYEnd:          bc.NYEnd,
+				TightThreshold: bc.TightPips,
+				EMALength:      bc.EMALength,
+				RSILength:      bc.RSILength,
+			})
 		default:
 			slog.Error("unknown indicator, skipping bot", "indicator", bc.Indicator, "bot", bc.Name)
 			continue

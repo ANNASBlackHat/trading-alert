@@ -7,6 +7,10 @@ telegram:
   token: "your-telegram-bot-token"
   chat_id: "your-telegram-chat-id"
 
+alpaca:
+  api_key: "your-alpaca-api-key"
+  secret_key: "your-alpaca-secret-key"
+
 bots:
   - name: "BTC-1h/5m"
     symbol: BTCUSDT
@@ -27,3 +31,36 @@ bots:
     sucker_candles: 3
     zone_tolerance: 0.003
     indicator: pitchfork
+
+  # Session Range strategy — Asian Range + London Sweep + NY Reversal
+  - name: "MSFT-SessionRange"
+    symbol: MSFT
+    exchange: alpaca
+    htf_interval: "1h"
+    ltf_interval: "15m"
+    indicator: session_range
+    asia_start: 0
+    asia_end: 6
+    london_start: 8
+    london_end: 12
+    ny_start: 13
+    ny_end: 17
+    tight_pips: 2.0
+    ema_length: 50
+    rsi_length: 14
+
+  - name: "SPY-SessionRange"
+    symbol: SPY
+    exchange: alpaca
+    htf_interval: "1h"
+    ltf_interval: "15m"
+    indicator: session_range
+    asia_start: 0
+    asia_end: 6
+    london_start: 8
+    london_end: 12
+    ny_start: 13
+    ny_end: 17
+    tight_pips: 3.0
+    ema_length: 50
+    rsi_length: 14

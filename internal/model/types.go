@@ -22,8 +22,10 @@ type ActiveSignal struct {
 
 type TradeSignal struct {
 	Trigger          bool
+	Direction        string  // "LONG", "SHORT" (empty defaults to LONG for backward compat)
 	EntryPrice       float64
 	SLPrice          float64
 	TPPrice          float64
 	LowestDuringDrop float64
+	Message          string // strategy-specific alert text; bot uses this if non-empty
 }

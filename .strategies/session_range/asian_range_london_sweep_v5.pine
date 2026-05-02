@@ -1,0 +1,238 @@
+// © Asian Range + London Sweep Strategy (Pine Script v5)
+// Based on: Asia consolidation → London liquidity sweep → NY reversal
+// Instrument: Best on ES1!, NQ1!, Forex majors, BTC/ETH (with caution)
+// Timeframe: 15m or 1H recommended
+
+//@version=5
+indicator("Asian Range + London Sweep", overlay=true, max_boxes_count=100, max_labels_count=100, max_lines_count=100)
+
+// ─────────────────────────────────────────────
+// INPUTS
+// ─────────────────────────────────────────────
+// v5 NOTE: group strings must be declared inline (no separate var assignment)
+asiaStart    = input.int(0,   "Asia Start Hour (UTC)",               minval=0, maxval=23, group="Session Times (UTC)")
+asiaEnd      = input.int(6,   "Asia End Hour (UTC)",                 minval=0, maxval=23, group="Session Times (UTC)")
+londonStart  = input.int(8,   "London Start Hour (UTC)",             minval=0, maxval=23, group="Session Times (UTC)")
+londonEnd    = input.int(12,  "London End Hour (UTC)",               minval=0, maxval=23, group="Session Times (UTC)")
+nyStart      = input.int(13,  "NY Start Hour (UTC)",                 minval=0, maxval=23, group="Session Times (UTC)")
+nyEnd        = input.int(17,  "NY End Hour (UTC)",                   minval=0, maxval=23, group="Session Times (UTC)")
+
+tightPips    = input.float(20.0, "Tight Asia Threshold (pips/points)", minval=1.0, group="Strategy Filters", tooltip="Asia range must be BELOW this value to qualify as 'tight'")
+requireTight = input.bool(true,  "Only trade TIGHT Asia sessions?",    group="Strategy Filters")
+showAllBoxes = input.bool(true,  "Show session boxes even on non-tight days?", group="Strategy Filters")
+
+colorAsia    = input.color(color.new(#5b9cf6, 75), "Asia Box Color",   group="Visual Settings")
+colorLondon  = input.color(color.new(#f23645, 75), "London Box Color", group="Visual Settings")
+colorNY      = input.color(color.new(#089981, 75), "NY Box Color",     group="Visual Settings")
+colorSweepUp = input.color(color.new(#00e676, 0),  "Bullish Sweep",    group="Visual Settings")
+colorSweepDn = input.color(color.new(#ff1744, 0),  "Bearish Sweep",    group="Visual Settings")
+showDash     = input.bool(true, "Show Dashboard",                      group="Visual Settings")
+
+// ─────────────────────────────────────────────
+// SESSION HELPERS
+// ─────────────────────────────────────────────
+pip = syminfo.mintick * 10
+
+// v5 NOTE: functions use explicit parameter types via simple inference — same syntax works
+hourOf(t) =>
+    hour(t, "UTC")
+
+inSession(startH, endH) =>
+    h = hourOf(time)
+    startH < endH ? h >= startH and h < endH : h >= startH or h < endH
+
+isAsia   = inSession(asiaStart,   asiaEnd)
+isLondon = inSession(londonStart, londonEnd)
+isNY     = inSession(nyStart,     nyEnd)
+
+// ─────────────────────────────────────────────
+// ASIA RANGE TRACKING
+// ─────────────────────────────────────────────
+var float asiaHigh     = na
+var float asiaLow      = na
+var int   asiaBarStart = na
+var box   asiaBox      = na
+var bool  asiaTight    = false
+
+// Reset at Asia open
+if isAsia and not isAsia[1]
+    asiaHigh     := high
+    asiaLow      := low
+    asiaBarStart := bar_index
+
+// Expand during Asia
+if isAsia
+    asiaHigh := math.max(asiaHigh, high)
+    asiaLow  := math.min(asiaLow,  low)
+
+// Finalize Asia range at close of Asia session
+asiaJustClosed = not isAsia and isAsia[1]
+
+if asiaJustClosed
+    asiaRange  = (asiaHigh - asiaLow) / pip
+    asiaTight := asiaRange <= tightPips
+
+    if showAllBoxes or asiaTight
+        // v5 NOTE: ternary inside function args is fine in both versions
+        boxColor = asiaTight ? colorAsia : color.new(color.gray, 85)
+        asiaBox := box.new(asiaBarStart, asiaHigh, bar_index, asiaLow,
+             border_color=asiaTight ? color.new(#5b9cf6, 0) : color.new(color.gray, 60),
+             border_width=1,
+             bgcolor=boxColor)
+        label.new(asiaBarStart, asiaHigh,
+             text="ASIA" + (asiaTight ? " ✓ TIGHT" : " (wide)"),
+             style=label.style_label_right,
+             color=color.new(color.black, 100),
+             textcolor=asiaTight ? #5b9cf6 : color.gray,
+             size=size.small)
+
+// ─────────────────────────────────────────────
+// LONDON SWEEP DETECTION
+// ─────────────────────────────────────────────
+var bool  bullSweep     = false
+var bool  bearSweep     = false
+var bool  sweepSignaled = false
+var int   londonBarStart = na
+var box   londonBox     = na
+var float londonHigh    = na
+var float londonLow     = na
+
+// Reset at London open
+if isLondon and not isLondon[1]
+    londonHigh     := high
+    londonLow      := low
+    londonBarStart := bar_index
+    sweepSignaled  := false
+    bullSweep      := false
+    bearSweep      := false
+
+// Track London range
+if isLondon
+    londonHigh := math.max(londonHigh, high)
+    londonLow  := math.min(londonLow,  low)
+
+// Sweep conditions
+// v5 NOTE: requireTight is bool, asiaTight is bool — no implicit int→bool casting needed here
+// but we make it explicit and safe with a proper bool expression
+canTrade = requireTight ? asiaTight : true
+
+// v5 NOTE: 'not bearSweep' and 'not bullSweep' are fine — bools work natively
+newBullSweep = isLondon and canTrade and not na(asiaLow)  and low  < asiaLow  and not bearSweep
+newBearSweep = isLondon and canTrade and not na(asiaHigh) and high > asiaHigh and not bullSweep
+
+// Only signal once per London session
+if newBullSweep and not sweepSignaled
+    bearSweep     := true
+    sweepSignaled := true
+    line.new(asiaBarStart, asiaLow, bar_index, asiaLow,
+         color=colorSweepDn, width=2, style=line.style_dashed)
+    label.new(bar_index, low,
+         text="▼ SWEEP LOW\nShort into NY →",
+         style=label.style_label_up,
+         color=colorSweepDn,
+         textcolor=color.white,
+         size=size.normal)
+    alert("BEARISH SWEEP: London swept Asia Low on " + syminfo.ticker + ". Look for short into NY session.", alert.freq_once_per_bar)
+
+if newBearSweep and not sweepSignaled
+    bullSweep     := true
+    sweepSignaled := true
+    line.new(asiaBarStart, asiaHigh, bar_index, asiaHigh,
+         color=colorSweepUp, width=2, style=line.style_dashed)
+    label.new(bar_index, high,
+         text="▲ SWEEP HIGH\nLong into NY →",
+         style=label.style_label_down,
+         color=colorSweepUp,
+         textcolor=color.white,
+         size=size.normal)
+    alert("BULLISH SWEEP: London swept Asia High on " + syminfo.ticker + ". Look for long into NY session.", alert.freq_once_per_bar)
+
+// Draw London box at session close
+londonJustClosed = not isLondon and isLondon[1]
+if londonJustClosed and showAllBoxes
+    londonBox := box.new(londonBarStart, londonHigh, bar_index, londonLow,
+         border_color=color.new(#f23645, 40),
+         border_width=1,
+         bgcolor=colorLondon)
+    label.new(londonBarStart, londonHigh,
+         text="LONDON",
+         style=label.style_label_right,
+         color=color.new(color.black, 100),
+         textcolor=#f23645,
+         size=size.small)
+
+// ─────────────────────────────────────────────
+// NY SESSION BOX
+// ─────────────────────────────────────────────
+var int   nyBarStart = na
+var box   nyBox      = na
+var float nyHigh     = na
+var float nyLow      = na
+
+if isNY and not isNY[1]
+    nyBarStart := bar_index
+    nyHigh     := high
+    nyLow      := low
+
+if isNY
+    nyHigh := math.max(nyHigh, high)
+    nyLow  := math.min(nyLow,  low)
+
+nyJustClosed = not isNY and isNY[1]
+if nyJustClosed and showAllBoxes
+    nyBox := box.new(nyBarStart, nyHigh, bar_index, nyLow,
+         border_color=color.new(#089981, 40),
+         border_width=1,
+         bgcolor=colorNY)
+    label.new(nyBarStart, nyHigh,
+         text="NY",
+         style=label.style_label_right,
+         color=color.new(color.black, 100),
+         textcolor=#089981,
+         size=size.small)
+
+// ─────────────────────────────────────────────
+// BACKGROUND SESSION HIGHLIGHT
+// ─────────────────────────────────────────────
+bgcolor(isAsia   ? color.new(#5b9cf6, 96) : na, title="Asia BG")
+bgcolor(isLondon ? color.new(#f23645, 96) : na, title="London BG")
+bgcolor(isNY     ? color.new(#089981, 96) : na, title="NY BG")
+
+// ─────────────────────────────────────────────
+// DASHBOARD TABLE
+// ─────────────────────────────────────────────
+// v5 NOTE: table.new() syntax is identical in v5
+var table dash = table.new(position.top_right, 2, 6,
+     border_color=color.new(color.white, 80), border_width=1)
+
+if showDash and barstate.islast
+    sessionName  = isAsia ? "🌏 ASIA" : isLondon ? "🇬🇧 LONDON" : isNY ? "🗽 NEW YORK" : "⏳ OFF"
+
+    // v5 NOTE: math.round() with precision arg exists in v5 — no change needed
+    asiaRangeVal = not na(asiaHigh) and not na(asiaLow) ? str.tostring(math.round((asiaHigh - asiaLow) / pip, 1)) + " pts" : "—"
+    tightStatus  = asiaTight ? "✅ TIGHT" : "❌ WIDE"
+    sweepStatus  = bullSweep ? "▲ BULL SWEEP" : bearSweep ? "▼ BEAR SWEEP" : "— None yet"
+    sweepColor   = bullSweep ? colorSweepUp : bearSweep ? colorSweepDn : color.gray
+    biasText     = bullSweep ? "LONG into NY" : bearSweep ? "SHORT into NY" : "Wait..."
+
+    hdrBg  = color.new(color.navy, 20)
+    cellBg = color.new(color.black, 40)
+    txtCol = color.white
+
+    table.cell(dash, 0, 0, "📊 STRATEGY DASH", text_color=txtCol,        bgcolor=hdrBg,  text_size=size.small)
+    table.cell(dash, 1, 0, syminfo.ticker,      text_color=color.yellow,  bgcolor=hdrBg,  text_size=size.small)
+
+    table.cell(dash, 0, 1, "Session",    text_color=color.silver, bgcolor=cellBg, text_size=size.small)
+    table.cell(dash, 1, 1, sessionName,  text_color=txtCol,       bgcolor=cellBg, text_size=size.small)
+
+    table.cell(dash, 0, 2, "Asia Range", text_color=color.silver, bgcolor=cellBg, text_size=size.small)
+    table.cell(dash, 1, 2, asiaRangeVal, text_color=txtCol,       bgcolor=cellBg, text_size=size.small)
+
+    table.cell(dash, 0, 3, "Asia Status", text_color=color.silver,                   bgcolor=cellBg, text_size=size.small)
+    table.cell(dash, 1, 3, tightStatus,   text_color=asiaTight ? #00e676 : #ff1744,  bgcolor=cellBg, text_size=size.small)
+
+    table.cell(dash, 0, 4, "Sweep",      text_color=color.silver, bgcolor=cellBg, text_size=size.small)
+    table.cell(dash, 1, 4, sweepStatus,  text_color=sweepColor,   bgcolor=cellBg, text_size=size.small)
+
+    table.cell(dash, 0, 5, "Bias",       text_color=color.silver, bgcolor=cellBg, text_size=size.small)
+    table.cell(dash, 1, 5, biasText,     text_color=bullSweep ? #00e676 : bearSweep ? #ff1744 : color.gray, bgcolor=cellBg, text_size=size.small)
