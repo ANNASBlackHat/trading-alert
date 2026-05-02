@@ -43,7 +43,7 @@ func (c *AlpacaClient) FetchKlines(interval string, limit int) ([]model.Kline, e
 
 	body, err := c.doRequest(url)
 	if err != nil {
-		return nil, fmt.Errorf("alpaca FetchKlines: %w", err)
+		return nil, fmt.Errorf("alpaca FetchKlines: %w | url: %s", err, url)
 	}
 
 	var resp struct {
