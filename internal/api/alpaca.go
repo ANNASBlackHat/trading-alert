@@ -61,7 +61,7 @@ func (c *AlpacaClient) FetchKlines(interval string, limit int) ([]model.Kline, e
 
 	bars, ok := resp.Bars[c.symbol]
 	if !ok {
-		return nil, fmt.Errorf("alpaca FetchKlines: no bars for symbol %s", c.symbol)
+		return nil, fmt.Errorf("alpaca FetchKlines: no bars for symbol %s | available bars: %v | body: %s | url: %s", c.symbol, resp.Bars, body, url)
 	}
 
 	klines := make([]model.Kline, len(bars))
