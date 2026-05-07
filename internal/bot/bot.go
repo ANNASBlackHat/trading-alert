@@ -3,18 +3,21 @@ package bot
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/annasblackhat/trading-alert/internal/api"
 	"github.com/annasblackhat/trading-alert/internal/indicator"
 	"github.com/annasblackhat/trading-alert/internal/model"
 	"github.com/annasblackhat/trading-alert/internal/notifier"
+	"github.com/annasblackhat/trading-alert/internal/target"
 )
 
 type Bot struct {
 	Client      api.MarketClient
 	Indicator   indicator.Indicator
 	Notifier    notifier.Notifier
+	TargetStore target.Store
 	HTFInterval string
 	LTFInterval string
 	Name        string
@@ -24,12 +27,13 @@ type Bot struct {
 	lastCandleTime  int64
 }
 
-func NewBot(name string, client api.MarketClient, ind indicator.Indicator, notif notifier.Notifier, htf string, ltf string) *Bot {
+func NewBot(name string, client api.MarketClient, ind indicator.Indicator, notif notifier.Notifier, store target.Store, htf string, ltf string) *Bot {
 	return &Bot{
 		Name:        name,
 		Client:      client,
 		Indicator:   ind,
 		Notifier:    notif,
+		TargetStore: store,
 		HTFInterval: htf,
 		LTFInterval: ltf,
 	}
@@ -50,9 +54,10 @@ func (b *Bot) RunCycle() {
 		return
 	}
 
-	// 3. Current price for proximity alerts
+	// 3. Current price for proximity alerts and target monitoring
 	currentPrice := b.Client.GetCurrentPrice()
 	slog.Info("current price check", "bot", b.Name, slog.Float64("current_price", currentPrice))
+	b.checkTargetAlerts(currentPrice)
 
 	if len(ltfKlines) == 0 {
 		slog.Error("LTF klines is empty", "bot", b.Name)
@@ -110,6 +115,61 @@ Low Interval: %v`, b.Name, signal.EntryPrice, signal.SLPrice, signal.TPPrice, ti
 
 	// 5. Always check proximity if we have an active signal
 	b.checkProximity(currentPrice)
+}
+
+func (b *Bot) checkTargetAlerts(current float64) {
+	if b.TargetStore == nil || current == 0 {
+		return
+	}
+
+	symbol := strings.ToUpper(b.Client.Symbol())
+	targets, err := b.TargetStore.ListBySymbol(symbol)
+	if err != nil {
+		slog.Error("failed to list targets", "bot", b.Name, "symbol", symbol, "err", err)
+		return
+	}
+
+	for _, t := range targets {
+		if t.BotName != "" && t.BotName != b.Name {
+			continue
+		}
+
+		currentState := target.NormalizeState(current, t.TargetPrice)
+		if t.LastState == target.StateUnknown {
+			t.LastState = currentState
+			if err := b.TargetStore.Update(t); err != nil {
+				slog.Error("failed to update initial target state", "target_id", t.ID, "err", err)
+			}
+			continue
+		}
+
+		triggered := false
+		if t.Direction == target.DirectionUp && t.LastState == target.StateBelow && currentState == target.StateAbove {
+			triggered = true
+		}
+		if t.Direction == target.DirectionDown && t.LastState == target.StateAbove && currentState == target.StateBelow {
+			triggered = true
+		}
+
+		if triggered {
+			msg := fmt.Sprintf("🎯 TARGET ALERT [%s]\n%s crossed %s %.2f\nCurrent: %.2f",
+				b.Name, symbol, strings.ToUpper(string(t.Direction)), t.TargetPrice, current)
+			if err := b.Notifier.Send(msg); err != nil {
+				slog.Error("failed to send target alert", "bot", b.Name, "target_id", t.ID, "err", err)
+			}
+			if err := b.TargetStore.Delete(t.ID); err != nil {
+				slog.Error("failed to delete triggered target", "target_id", t.ID, "err", err)
+			}
+			continue
+		}
+
+		if t.LastState != currentState {
+			t.LastState = currentState
+			if err := b.TargetStore.Update(t); err != nil {
+				slog.Error("failed to update target state", "target_id", t.ID, "err", err)
+			}
+		}
+	}
 }
 
 func (b *Bot) checkProximity(current float64) {

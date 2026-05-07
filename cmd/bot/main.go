@@ -16,6 +16,7 @@ import (
 	"github.com/annasblackhat/trading-alert/internal/indicator"
 	"github.com/annasblackhat/trading-alert/internal/notifier"
 	"github.com/annasblackhat/trading-alert/internal/server"
+	"github.com/annasblackhat/trading-alert/internal/target"
 	"github.com/annasblackhat/trading-alert/internal/telemetry"
 )
 
@@ -79,6 +80,9 @@ func main() {
 		alpacaSecret = envSecret
 	}
 
+	// Create a shared target store for all bots and the API.
+	targetStore := target.NewInMemoryStore()
+
 	// Build bots from config
 	bots := make([]*bot.Bot, 0, len(cfg.Bots))
 	for _, bc := range cfg.Bots {
@@ -116,7 +120,7 @@ func main() {
 			continue
 		}
 
-		b := bot.NewBot(bc.Name, client, ind, telegramNotifier, bc.HTFInterval, bc.LTFInterval)
+		b := bot.NewBot(bc.Name, client, ind, telegramNotifier, targetStore, bc.HTFInterval, bc.LTFInterval)
 		bots = append(bots, b)
 
 		slog.Info("bot configured",
@@ -136,7 +140,7 @@ func main() {
 
 	// Setup Telemetry & Server
 	logProvider := telemetry.NewFileLogProvider(logFilePath)
-	apiServer := server.NewServer("8080", logProvider)
+	apiServer := server.NewServer("8080", logProvider, targetStore)
 
 	// Start API server in background
 	go func() {
