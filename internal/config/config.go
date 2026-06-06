@@ -47,6 +47,11 @@ type FinnhubConfig struct {
 	APIKey string `yaml:"api_key"`
 }
 
+type DatabaseConfig struct {
+	Type           string `yaml:"type"`
+	ConnectionPath string `yaml:"connection_path"`
+}
+
 // AppConfig is the top-level application configuration.
 type AppConfig struct {
 	PollIntervalSec int            `yaml:"poll_interval_sec"`
@@ -54,6 +59,7 @@ type AppConfig struct {
 	Alpaca          AlpacaConfig   `yaml:"alpaca"`
 	Finnhub         FinnhubConfig  `yaml:"finnhub"`
 	Bots            []BotConfig    `yaml:"bots"`
+	Database        DatabaseConfig `yaml:"database"`
 }
 
 // Load reads and parses a YAML config file.

@@ -44,7 +44,7 @@ deploy_to_vps:
     - echo "$CONFIG_YAML" > config.yaml
     
     - echo "Starting new container..."
-    - docker run -d --name $CONTAINER_NAME --restart unless-stopped -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
+    - docker run -d --name $CONTAINER_NAME --restart unless-stopped -v /root/trading-alert/data:/app/data -v /root/trading-alert/config.yaml:/app/config.yaml -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
     - docker container exec $CONTAINER_NAME sh -c "echo '$CONFIG_YAML' > /app/config.yaml"
     - docker container restart $CONTAINER_NAME
     

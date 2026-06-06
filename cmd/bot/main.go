@@ -87,7 +87,20 @@ func main() {
 	}
 
 	// Create a shared target store for all bots and the API.
-	targetStore := target.NewInMemoryStore()
+	var targetStore target.Store
+	if cfg.Database.Type == "sqlite" {
+		sqliteStore, err := target.NewSQLiteStore(cfg.Database.ConnectionPath)
+		if err != nil {
+			slog.Error("failed to initialize SQLite store", slog.Any("error", err))
+			os.Exit(1)
+		}
+		defer sqliteStore.Close()
+		targetStore = sqliteStore
+		slog.Info("SQLite persistent storage initialized", "path", cfg.Database.ConnectionPath)
+	} else {
+		targetStore = target.NewInMemoryStore()
+		slog.Info("In-Memory target storage initialized")
+	}
 
 	// Build bots from config
 	bots := make([]*bot.Bot, 0, len(cfg.Bots))

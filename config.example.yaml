@@ -3,6 +3,10 @@
 
 poll_interval_sec: 15
 
+database:
+  type: "sqlite" # or "memory"
+  connection_path: "data/targets.db"
+
 telegram:
   token: "your-telegram-bot-token"
   chat_id: "your-telegram-chat-id"
