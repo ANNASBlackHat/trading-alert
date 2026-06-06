@@ -42,11 +42,17 @@ type AlpacaConfig struct {
 	SecretKey string `yaml:"secret_key"`
 }
 
+// FinnhubConfig holds Finnhub.io API credentials.
+type FinnhubConfig struct {
+	APIKey string `yaml:"api_key"`
+}
+
 // AppConfig is the top-level application configuration.
 type AppConfig struct {
 	PollIntervalSec int            `yaml:"poll_interval_sec"`
 	Telegram        TelegramConfig `yaml:"telegram"`
 	Alpaca          AlpacaConfig   `yaml:"alpaca"`
+	Finnhub         FinnhubConfig  `yaml:"finnhub"`
 	Bots            []BotConfig    `yaml:"bots"`
 }
 

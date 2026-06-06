@@ -40,31 +40,37 @@ func NewBot(name string, client api.MarketClient, ind indicator.Indicator, notif
 }
 
 func (b *Bot) RunCycle() {
-	// 1. Fetch HTF
+	// 1. Current price check and target alerts are processed first
+	currentPrice := b.Client.GetCurrentPrice()
+	slog.Info("current price check", "bot", b.Name, slog.Float64("current_price", currentPrice))
+	b.checkTargetAlerts(currentPrice)
+
+	// 2. If no indicator is configured, we only monitor price targets and proximity alerts
+	if b.Indicator == nil {
+		b.checkProximity(currentPrice)
+		return
+	}
+
+	// 3. Fetch HTF
 	htfKlines, err := b.Client.FetchKlines(b.HTFInterval, 500)
 	if err != nil {
 		slog.Error("HTF fetch error", "bot", b.Name, "err", err)
 		return
 	}
 
-	// 2. Fetch LTF
+	// 4. Fetch LTF
 	ltfKlines, err := b.Client.FetchKlines(b.LTFInterval, 100)
 	if err != nil {
 		slog.Error("LTF fetch error", "bot", b.Name, "err", err)
 		return
 	}
 
-	// 3. Current price for proximity alerts and target monitoring
-	currentPrice := b.Client.GetCurrentPrice()
-	slog.Info("current price check", "bot", b.Name, slog.Float64("current_price", currentPrice))
-	b.checkTargetAlerts(currentPrice)
-
 	if len(ltfKlines) == 0 {
 		slog.Error("LTF klines is empty", "bot", b.Name)
 		return
 	}
 
-	// 4. Check for new completed candle
+	// 5. Check for new completed candle
 	latest := ltfKlines[len(ltfKlines)-1]
 	if latest.OpenTime == b.lastCandleTime {
 		// Same candle → only check proximity
@@ -113,7 +119,7 @@ Low Interval: %v`, b.Name, signal.EntryPrice, signal.SLPrice, signal.TPPrice, ti
 		b.activeDirection = signal.Direction
 	}
 
-	// 5. Always check proximity if we have an active signal
+	// 6. Always check proximity if we have an active signal
 	b.checkProximity(currentPrice)
 }
 

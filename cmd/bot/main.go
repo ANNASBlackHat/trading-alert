@@ -80,6 +80,12 @@ func main() {
 		alpacaSecret = envSecret
 	}
 
+	// Resolve Finnhub credentials (from config, with env override)
+	finnhubKey := cfg.Finnhub.APIKey
+	if envFinnhubKey := os.Getenv("FINNHUB_API_KEY"); envFinnhubKey != "" {
+		finnhubKey = envFinnhubKey
+	}
+
 	// Create a shared target store for all bots and the API.
 	targetStore := target.NewInMemoryStore()
 
@@ -93,6 +99,8 @@ func main() {
 			client = api.NewBinanceClient(bc.Symbol)
 		case "alpaca":
 			client = api.NewAlpacaClient(bc.Symbol, alpacaKey, alpacaSecret)
+		case "finnhub":
+			client = api.NewFinnhubClient(bc.Symbol, finnhubKey)
 		default:
 			slog.Error("unknown exchange, skipping bot", "exchange", bc.Exchange, "bot", bc.Name)
 			continue
@@ -115,6 +123,8 @@ func main() {
 				EMALength:      bc.EMALength,
 				RSILength:      bc.RSILength,
 			})
+		case "none", "":
+			ind = nil
 		default:
 			slog.Error("unknown indicator, skipping bot", "indicator", bc.Indicator, "bot", bc.Name)
 			continue

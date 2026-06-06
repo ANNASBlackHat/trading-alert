@@ -11,6 +11,9 @@ alpaca:
   api_key: "your-alpaca-api-key"
   secret_key: "your-alpaca-secret-key"
 
+finnhub:
+  api_key: "your-finnhub-api-key"
+
 bots:
   - name: "BTC-1h/5m"
     symbol: BTCUSDT
