@@ -6,6 +6,7 @@ variables:
   IMAGE_NAME: $CI_REGISTRY_IMAGE/trading-bot
   IMAGE_TAG: $CI_COMMIT_REF_SLUG
   CONTAINER_NAME: "trading-alert"
+  CONFIG_PATH: "/root/trading-alert/config.yaml"
 
 # 1. Build the image using GitLab's Public Runners
 build_image:
