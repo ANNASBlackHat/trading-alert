@@ -5,6 +5,7 @@ stages:
 variables:
   IMAGE_NAME: $CI_REGISTRY_IMAGE/trading-bot
   IMAGE_TAG: $CI_COMMIT_REF_SLUG
+  CONTAINER_NAME: "trading-alert"
 
 # 1. Build the image using GitLab's Public Runners
 build_image:
@@ -35,16 +36,16 @@ deploy_to_vps:
     - docker pull $IMAGE_NAME:$IMAGE_TAG
     
     - echo "Stopping existing container..."
-    - docker stop active-trading-bot || true
-    - docker rm active-trading-bot || true
+    - docker stop $CONTAINER_NAME || true
+    - docker rm $CONTAINER_NAME || true
     
     - echo "Creating config.yaml from CI variable..."
     - echo "$CONFIG_YAML" > config.yaml
     
     - echo "Starting new container..."
-    - docker run -d --name active-trading-bot --restart unless-stopped -v /root/trading-alert/config.yaml:/app/config.yaml -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
-    - docker container exec active-trading-bot sh -c "echo '$CONFIG_YAML' > /app/config.yaml"
-    - docker container restart active-trading-bot
+    - docker run -d --name $CONTAINER_NAME --restart unless-stopped -v /root/trading-alert/config.yaml:/app/config.yaml -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
+    - docker container exec $CONTAINER_NAME sh -c "echo '$CONFIG_YAML' > /app/config.yaml"
+    - docker container restart $CONTAINER_NAME
     
     - echo "Deployment successful!"
   rules:
