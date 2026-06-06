@@ -94,3 +94,110 @@ tradingBot := bot.NewBot(client, pitchfork, discordNotifier, htfInterval, ltfInt
 ```
 
 > **Pro Tip:** In Go, you do not need to explicitly declare that a struct implements an `interface`. Simply adding the matching method signatures (`Analyze` or `Send`) is enough!
+
+---
+
+## API Documentation
+
+The bot hosts an HTTP API on port `8080` to manage price targets and monitor log outputs.
+
+### Endpoints
+
+#### 1. Fetch Recent Logs
+* **Route:** `GET /logs`
+* **Query Params:** `lines=N` (optional, default `100`, max `1000`)
+* **Example:**
+  ```bash
+  curl "http://localhost:8080/logs?lines=10"
+  ```
+
+#### 2. List Target Alerts
+* **Route:** `GET /api/targets`
+* **Query Params:** 
+  - `symbol` (optional, e.g., `BTCUSDT`)
+  - `bot_name` (optional, e.g., `BinanceBot`)
+* **Example:**
+  ```bash
+  curl "http://localhost:8080/api/targets?symbol=BTCUSDT"
+  ```
+
+#### 3. Get Target Alert Details
+* **Route:** `GET /api/targets/{id}`
+* **Example:**
+  ```bash
+  curl "http://localhost:8080/api/targets/btcusdt-1780730646914702000"
+  ```
+
+#### 4. Delete Target Alert
+* **Route:** `DELETE /api/targets/{id}`
+* **Response:** `204 No Content` on success.
+* **Example:**
+  ```bash
+  curl -X DELETE "http://localhost:8080/api/targets/btcusdt-1780730646914702000"
+  ```
+
+#### 5. Create Target Alert
+* **Route:** `POST /api/targets`
+* **Payload Fields:**
+  - `bot_name` (string, optional): Restrict execution to a specific bot.
+  - `symbol` (string, required): The ticker symbol (e.g. `"BTCUSDT"`).
+  - `direction` (string, required): `"up"` (crossing/trailing rise) or `"down"` (crossing/trailing fall).
+  - `type` (string, optional): `"price"` for standard alerts (default) or `"trailing"` for trailing stops.
+  - `note` (string, optional): Context label included in the notification message.
+
+##### Example A: Standard Price Alert (Type: `price`)
+Triggers when price crosses the target price.
+```bash
+curl -X POST http://localhost:8080/api/targets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "direction": "up",
+    "type": "price",
+    "target_price": 68500.0,
+    "note": "Take profit zone reached, sell 50%!"
+  }'
+```
+
+##### Example B: Percentage Trailing Stop (Type: `trailing`)
+Triggers when the price drops by 15% from its highest peak tracked *since setup*.
+```bash
+curl -X POST http://localhost:8080/api/targets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "ETHUSDT",
+    "direction": "down",
+    "type": "trailing",
+    "trailing_percent": 15.0,
+    "note": "Sell ETH, trailing stop hit!"
+  }'
+```
+
+##### Example C: Absolute Value Trailing Stop (Type: `trailing`)
+Triggers when the price rises by $50 from its lowest trough tracked *since setup*.
+```bash
+curl -X POST http://localhost:8080/api/targets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "SOLUSDT",
+    "direction": "up",
+    "type": "trailing",
+    "trailing_value": 50.0,
+    "note": "Reversal confirmed, buy entry trigger!"
+  }'
+```
+
+##### Example D: Gated/Activated Trailing Stop (Type: `trailing`)
+Triggers when the price drops 10% from the peak, but only activates *after* the price has first reached or exceeded `$70,000`.
+```bash
+curl -X POST http://localhost:8080/api/targets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "direction": "down",
+    "type": "trailing",
+    "trailing_percent": 10.0,
+    "activation_price": 70000.0,
+    "note": "Triggered trailing stop after reaching 70k!"
+  }'
+```

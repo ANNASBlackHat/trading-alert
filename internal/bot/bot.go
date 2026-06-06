@@ -140,6 +140,112 @@ func (b *Bot) checkTargetAlerts(current float64) {
 			continue
 		}
 
+		if t.Type == target.TargetTypeTrailing {
+			// Step 1: Check Activation
+			if !t.IsActive {
+				activated := false
+				if t.Direction == target.DirectionDown { // price must reach >= ActivationPrice to activate
+					if current >= t.ActivationPrice {
+						activated = true
+					}
+				} else if t.Direction == target.DirectionUp { // price must fall <= ActivationPrice to activate
+					if current <= t.ActivationPrice {
+						activated = true
+					}
+				}
+
+				if activated {
+					t.IsActive = true
+					t.ExtremePrice = current
+					slog.Info("trailing stop target activated", "bot", b.Name, "target_id", t.ID, "activation_price", t.ActivationPrice, "extreme_price", current)
+					if err := b.TargetStore.Update(t); err != nil {
+						slog.Error("failed to update target activation state", "target_id", t.ID, "err", err)
+					}
+				} else {
+					// Not active yet, skip tracking/trigger logic
+					continue
+				}
+			}
+
+			// Step 2: Initialize ExtremePrice on first check after activation if not set
+			if t.ExtremePrice == 0 {
+				t.ExtremePrice = current
+				if err := b.TargetStore.Update(t); err != nil {
+					slog.Error("failed to update target initial extreme price", "target_id", t.ID, "err", err)
+				}
+			}
+
+			// Step 3: Update ExtremePrice
+			extremeUpdated := false
+			if t.Direction == target.DirectionDown {
+				// Trailing down from peak (highest price since activation/setup)
+				if current > t.ExtremePrice {
+					t.ExtremePrice = current
+					extremeUpdated = true
+				}
+			} else if t.Direction == target.DirectionUp {
+				// Trailing up from trough (lowest price since activation/setup)
+				if current < t.ExtremePrice {
+					t.ExtremePrice = current
+					extremeUpdated = true
+				}
+			}
+
+			// Step 4: Evaluate Trigger
+			triggered := false
+			var threshold float64
+			if t.Direction == target.DirectionDown {
+				if t.TrailingPercent > 0 {
+					threshold = t.ExtremePrice * (1.0 - t.TrailingPercent/100.0)
+				} else {
+					threshold = t.ExtremePrice - t.TrailingValue
+				}
+				if current <= threshold {
+					triggered = true
+				}
+			} else if t.Direction == target.DirectionUp {
+				if t.TrailingPercent > 0 {
+					threshold = t.ExtremePrice * (1.0 + t.TrailingPercent/100.0)
+				} else {
+					threshold = t.ExtremePrice + t.TrailingValue
+				}
+				if current >= threshold {
+					triggered = true
+				}
+			}
+
+			if triggered {
+				var msg string
+				if t.Direction == target.DirectionDown {
+					msg = fmt.Sprintf("🚨 TRAILING STOP ALERT [%s]\n%s dropped below trailing threshold!\nPeak High: %.2f\nThreshold: %.2f\nCurrent Price: %.2f",
+						b.Name, symbol, t.ExtremePrice, threshold, current)
+				} else {
+					msg = fmt.Sprintf("🚨 TRAILING STOP ALERT [%s]\n%s rose above trailing threshold!\nTrough Low: %.2f\nThreshold: %.2f\nCurrent Price: %.2f",
+						b.Name, symbol, t.ExtremePrice, threshold, current)
+				}
+
+				if t.Note != "" {
+					msg = fmt.Sprintf("%s\n\nNote: %s", msg, t.Note)
+				}
+
+				if err := b.Notifier.Send(msg); err != nil {
+					slog.Error("failed to send trailing stop alert", "bot", b.Name, "target_id", t.ID, "err", err)
+				}
+				if err := b.TargetStore.Delete(t.ID); err != nil {
+					slog.Error("failed to delete triggered trailing target", "target_id", t.ID, "err", err)
+				}
+				continue
+			}
+
+			// If the extreme price updated but it didn't trigger, persist the new peak/trough
+			if extremeUpdated {
+				if err := b.TargetStore.Update(t); err != nil {
+					slog.Error("failed to update target extreme price", "target_id", t.ID, "err", err)
+				}
+			}
+			continue
+		}
+
 		currentState := target.NormalizeState(current, t.TargetPrice)
 		if t.LastState == target.StateUnknown {
 			t.LastState = currentState
@@ -160,6 +266,9 @@ func (b *Bot) checkTargetAlerts(current float64) {
 		if triggered {
 			msg := fmt.Sprintf("🎯 TARGET ALERT [%s]\n%s crossed %s %.2f\nCurrent: %.2f",
 				b.Name, symbol, strings.ToUpper(string(t.Direction)), t.TargetPrice, current)
+			if t.Note != "" {
+				msg = fmt.Sprintf("%s\n\nNote: %s", msg, t.Note)
+			}
 			if err := b.Notifier.Send(msg); err != nil {
 				slog.Error("failed to send target alert", "bot", b.Name, "target_id", t.ID, "err", err)
 			}

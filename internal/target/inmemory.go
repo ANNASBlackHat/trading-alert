@@ -22,11 +22,34 @@ func (s *InMemoryStore) Save(target Target) (Target, error) {
 	if target.Symbol == "" {
 		return Target{}, fmt.Errorf("symbol is required")
 	}
-	if target.TargetPrice <= 0 {
-		return Target{}, fmt.Errorf("target_price must be greater than zero")
-	}
+
 	target.Symbol = strings.ToUpper(target.Symbol)
 	target.Direction = Direction(strings.ToLower(string(target.Direction)))
+	if !IsValidDirection(string(target.Direction)) {
+		return Target{}, fmt.Errorf("invalid direction: must be 'up' or 'down'")
+	}
+
+	if target.Type == "" {
+		target.Type = TargetTypePrice
+	}
+
+	if target.Type == TargetTypePrice {
+		if target.TargetPrice <= 0 {
+			return Target{}, fmt.Errorf("target_price must be greater than zero for price alerts")
+		}
+	} else if target.Type == TargetTypeTrailing {
+		if target.TrailingPercent <= 0 && target.TrailingValue <= 0 {
+			return Target{}, fmt.Errorf("either trailing_percent or trailing_value must be greater than zero for trailing stop alerts")
+		}
+		if target.ActivationPrice <= 0 {
+			target.IsActive = true
+		} else {
+			target.IsActive = false
+		}
+	} else {
+		return Target{}, fmt.Errorf("invalid target type: %s", target.Type)
+	}
+
 	target.ID = generateID(target.Symbol)
 	target.CreatedAt = time.Now().UTC()
 	target.LastState = StateUnknown

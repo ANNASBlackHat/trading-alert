@@ -42,10 +42,15 @@ func (s *Server) Start() error {
 }
 
 type createTargetRequest struct {
-	BotName     string  `json:"bot_name,omitempty"`
-	Symbol      string  `json:"symbol"`
-	TargetPrice float64 `json:"target_price"`
-	Direction   string  `json:"direction"`
+	BotName         string  `json:"bot_name,omitempty"`
+	Symbol          string  `json:"symbol"`
+	TargetPrice     float64 `json:"target_price,omitempty"`
+	Direction       string  `json:"direction"`
+	Type            string  `json:"type,omitempty"`
+	TrailingPercent float64 `json:"trailing_percent,omitempty"`
+	TrailingValue   float64 `json:"trailing_value,omitempty"`
+	ActivationPrice float64 `json:"activation_price,omitempty"`
+	Note            string  `json:"note,omitempty"`
 }
 
 func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
@@ -149,24 +154,27 @@ func (s *Server) handleTargets(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
-		if req.Symbol == "" || req.TargetPrice <= 0 || !target.IsValidDirection(strings.ToLower(req.Direction)) {
-			http.Error(w, "Missing or invalid target payload", http.StatusBadRequest)
+		if req.Symbol == "" || !target.IsValidDirection(strings.ToLower(req.Direction)) {
+			http.Error(w, "Missing symbol or invalid direction", http.StatusBadRequest)
 			return
 		}
 
 		newTarget := target.Target{
-			BotName:     req.BotName,
-			Symbol:      strings.ToUpper(req.Symbol),
-			TargetPrice: req.TargetPrice,
-			Direction:   target.Direction(strings.ToLower(req.Direction)),
-			CreatedAt:   time.Now().UTC(),
-			LastState:   target.StateUnknown,
+			BotName:         req.BotName,
+			Symbol:          strings.ToUpper(req.Symbol),
+			TargetPrice:     req.TargetPrice,
+			Direction:       target.Direction(strings.ToLower(req.Direction)),
+			Type:            target.TargetType(strings.ToLower(req.Type)),
+			TrailingPercent: req.TrailingPercent,
+			TrailingValue:   req.TrailingValue,
+			ActivationPrice: req.ActivationPrice,
+			Note:            req.Note,
 		}
 
 		created, err := s.targetStore.Save(newTarget)
 		if err != nil {
-			slog.Error("Failed to save new target", slog.Any("error", err))
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			slog.Warn("Failed to validate and save new target", slog.Any("error", err))
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
