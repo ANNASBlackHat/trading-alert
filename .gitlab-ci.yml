@@ -39,7 +39,7 @@ deploy_to_vps:
     - docker rm active-trading-bot || true
     
     - echo "Creating config.yaml from CI variable..."
-    - echo "$CONFIG_YAML" > config.yaml
+    - echo "$CONFIG_YAML" > /root/trading-alert/config-ori.yaml
     
     - echo "Starting new container..."
     - docker run -d --name active-trading-bot --restart unless-stopped -v /root/trading-alert/config.yaml:/app/config.yaml -p 16261:8080 $IMAGE_NAME:$IMAGE_TAG
