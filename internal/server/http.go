@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/annasblackhat/trading-alert/internal/target"
 	"github.com/annasblackhat/trading-alert/internal/telemetry"
