@@ -246,3 +246,77 @@ type DataQuality struct {
 	UnscoredPredictions   int     `json:"unscored_predictions,omitempty"`
 	MinSampleWarning      *string `json:"min_sample_warning,omitempty"`
 }
+
+// ── Phase 2 aggregation result shapes ─────────────────────────
+
+// ScoreboardGroup is one aggregation bucket (by channel, confidence, or timeframe).
+type ScoreboardGroup struct {
+	Key         string   `json:"key"`
+	N           int      `json:"n"`
+	Correct     int      `json:"correct"`
+	HitRate     *float64 `json:"hit_rate,omitempty"`
+	AvgAccuracy *float64 `json:"avg_accuracy,omitempty"`
+}
+
+// BtcScoreboard is the response for btc_get_scoreboard.
+type BtcScoreboardOut struct {
+	WindowDays       int               `json:"window_days"`
+	ByChannel        []ScoreboardGroup `json:"by_channel"`
+	ByConfidence     []ScoreboardGroup `json:"by_confidence"`
+	ByTimeframe      []ScoreboardGroup `json:"by_timeframe"`
+	MinSampleWarning *string           `json:"min_sample_warning,omitempty"`
+	Disclaimer       string            `json:"disclaimer"`
+}
+
+// TechniqueStat is one row in the technique ledger, with a low-sample flag.
+type TechniqueStat struct {
+	TechniqueName       string  `json:"technique_name"`
+	TimesUsed           int     `json:"times_used"`
+	CorrectCalls        int     `json:"correct_calls"`
+	HitRate             float64 `json:"hit_rate"`
+	BestMarketCondition *string `json:"best_market_condition,omitempty"`
+	LowSample           bool    `json:"low_sample,omitempty"`
+}
+
+// BtcTechniqueStats is the response for btc_technique_stats.
+type BtcTechniqueStatsOut struct {
+	Techniques []TechniqueStat `json:"techniques"`
+	Disclaimer string          `json:"disclaimer"`
+}
+
+// TickerTrend is one row in the trending response.
+type TickerTrend struct {
+	Ticker   string          `json:"ticker"`
+	Mentions int             `json:"mentions"`
+	Stance   StanceBreakdown `json:"stance"`
+}
+
+// StocksTrending is the response for stocks_trending.
+type StocksTrendingOut struct {
+	WindowDays int           `json:"window_days"`
+	Tickers    []TickerTrend `json:"tickers"`
+	Disclaimer string        `json:"disclaimer"`
+}
+
+// CatalystItem is one upcoming catalyst across cards.
+type CatalystItem struct {
+	Ticker      string `json:"ticker,omitempty"`
+	CompanyName string `json:"company_name,omitempty"`
+	Catalyst    string `json:"catalyst"`
+	CardID      string `json:"card_id"`
+	VideoID     string `json:"video_id"`
+}
+
+// StocksUpcomingCatalysts is the response for stocks_upcoming_catalysts.
+type StocksUpcomingCatalystsOut struct {
+	WindowDays int            `json:"window_days"`
+	Items      []CatalystItem `json:"items"`
+	Disclaimer string         `json:"disclaimer"`
+}
+
+// BtcSearchAnalysesOut is the response for btc_search_analyses.
+type BtcSearchAnalysesOut struct {
+	Items      []DailyAnalysis `json:"items"`
+	Total      int             `json:"total"`
+	Disclaimer string          `json:"disclaimer"`
+}

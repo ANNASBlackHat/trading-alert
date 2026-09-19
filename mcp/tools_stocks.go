@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -142,12 +143,12 @@ func StocksGetTickerView(ctx context.Context, _ *sdkmcp.CallToolRequest, in Stoc
 
 	for i := range cards {
 		c := &cards[i]
-		switch strings.ToLower(c.Stance) {
-		case "bull", "buy", "long", "positive":
+		switch ClassifyStance(c.Stance) {
+		case "bull":
 			out.StanceBreakdown.Bull++
-		case "bear", "sell", "short", "negative":
+		case "bear":
 			out.StanceBreakdown.Bear++
-		case "neutral", "mixed", "wait":
+		case "neutral":
 			out.StanceBreakdown.Neutral++
 		default:
 			out.StanceBreakdown.Other++
@@ -163,5 +164,173 @@ func StocksGetTickerView(ctx context.Context, _ *sdkmcp.CallToolRequest, in Stoc
 		out.Cards = cards
 	}
 
+	return nil, out, nil
+}
+
+// ── stocks_trending ──────────────────────────────────────────
+
+// StocksTrendingArgs filters the trending-tickers query.
+type StocksTrendingArgs struct {
+	SinceDays int `json:"since_days,omitempty" jsonschema:"window in days (default 14)"`
+	TopN      int `json:"top_n,omitempty" jsonschema:"how many tickers to return (default 10, cap 50)"`
+}
+
+// StocksTrending returns the most-mentioned tickers in the window with a
+// stance breakdown per ticker.
+func StocksTrendingHandler(ctx context.Context, _ *sdkmcp.CallToolRequest, in StocksTrendingArgs) (*sdkmcp.CallToolResult, StocksTrendingOut, error) {
+	s := instance()
+	if s == nil {
+		return nil, StocksTrendingOut{}, storeErr()
+	}
+
+	if in.SinceDays <= 0 {
+		in.SinceDays = 14
+	}
+	if in.TopN <= 0 {
+		in.TopN = 10
+	}
+	if in.TopN > 50 {
+		in.TopN = 50
+	}
+	since := time.Now().UTC().AddDate(0, 0, -in.SinceDays).Format("2006-01-02")
+
+	pipe := mongo.Pipeline{
+		bson.D{{Key: "$match", Value: bson.M{"schema_version": "v2"}}},
+		bson.D{{Key: "$lookup", Value: bson.M{
+			"from":         "processed_videos",
+			"localField":   "video_id",
+			"foreignField": "video_id",
+			"as":           "video",
+		}}},
+		bson.D{{Key: "$unwind", Value: bson.M{"path": "$video", "preserveNullAndEmptyArrays": true}}},
+		bson.D{{Key: "$match", Value: bson.M{"video.publish_date": bson.M{"$gte": since}}}},
+		bson.D{{Key: "$group", Value: bson.M{
+			"_id":   "$ticker",
+			"cards": bson.M{"$push": bson.M{"stance": "$stance"}},
+		}}},
+	}
+
+	cursor, err := s.stocks.Collection("stock_cards").Aggregate(ctx, pipe)
+	if err != nil {
+		return nil, StocksTrendingOut{}, fmt.Errorf("aggregate stock_cards: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var groups []struct {
+		Ticker *string          `bson:"_id"`
+		Cards  []map[string]any `bson:"cards"`
+	}
+	if err := cursor.All(ctx, &groups); err != nil {
+		return nil, StocksTrendingOut{}, fmt.Errorf("decode trending groups: %w", err)
+	}
+
+	out := StocksTrendingOut{WindowDays: in.SinceDays, Disclaimer: disclaimerText}
+	for _, g := range groups {
+		if g.Ticker == nil || strings.TrimSpace(*g.Ticker) == "" {
+			continue
+		}
+		t := TickerTrend{Ticker: strings.ToUpper(*g.Ticker)}
+		for _, c := range g.Cards {
+			stance := ClassifyStance(coerceStr(c["stance"]))
+			t.Mentions++
+			switch stance {
+			case "bull":
+				t.Stance.Bull++
+			case "bear":
+				t.Stance.Bear++
+			case "neutral":
+				t.Stance.Neutral++
+			default:
+				t.Stance.Other++
+			}
+		}
+		out.Tickers = append(out.Tickers, t)
+	}
+
+	sort.Slice(out.Tickers, func(i, j int) bool {
+		return out.Tickers[i].Mentions > out.Tickers[j].Mentions
+	})
+	if len(out.Tickers) > in.TopN {
+		out.Tickers = out.Tickers[:in.TopN]
+	}
+	return nil, out, nil
+}
+
+// ── stocks_upcoming_catalysts ─────────────────────────────────
+
+// StocksUpcomingCatalystsArgs has one optional field.
+type StocksUpcomingCatalystsArgs struct {
+	SinceDays int `json:"since_days,omitempty" jsonschema:"window in days (default 30)"`
+}
+
+// StocksUpcomingCatalysts returns all upcoming catalysts mentioned in stock
+// cards in the window, with their source card / ticker / company.
+func StocksUpcomingCatalystsHandler(ctx context.Context, _ *sdkmcp.CallToolRequest, in StocksUpcomingCatalystsArgs) (*sdkmcp.CallToolResult, StocksUpcomingCatalystsOut, error) {
+	s := instance()
+	if s == nil {
+		return nil, StocksUpcomingCatalystsOut{}, storeErr()
+	}
+	if in.SinceDays <= 0 {
+		in.SinceDays = 30
+	}
+	since := time.Now().UTC().AddDate(0, 0, -in.SinceDays).Format("2006-01-02")
+
+	// Fetch cards in the window (ticker, company, card_id, video_id,
+	// upcoming_catalysts). Use $match + $lookup + $unwind.
+	pipe := mongo.Pipeline{
+		bson.D{{Key: "$match", Value: bson.M{"schema_version": "v2"}}},
+		bson.D{{Key: "$lookup", Value: bson.M{
+			"from":         "processed_videos",
+			"localField":   "video_id",
+			"foreignField": "video_id",
+			"as":           "video",
+		}}},
+		bson.D{{Key: "$unwind", Value: bson.M{"path": "$video", "preserveNullAndEmptyArrays": true}}},
+		bson.D{{Key: "$match", Value: bson.M{"video.publish_date": bson.M{"$gte": since}}}},
+		bson.D{{Key: "$project", Value: bson.M{
+			"card_id":            true,
+			"video_id":           true,
+			"ticker":             true,
+			"company_name":       true,
+			"upcoming_catalysts": true,
+		}}},
+	}
+
+	cursor, err := s.stocks.Collection("stock_cards").Aggregate(ctx, pipe)
+	if err != nil {
+		return nil, StocksUpcomingCatalystsOut{}, fmt.Errorf("aggregate catalysts: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var raw []map[string]any
+	if err := cursor.All(ctx, &raw); err != nil {
+		return nil, StocksUpcomingCatalystsOut{}, fmt.Errorf("decode catalysts: %w", err)
+	}
+
+	out := StocksUpcomingCatalystsOut{WindowDays: in.SinceDays, Disclaimer: disclaimerText}
+	seen := map[string]bool{}
+	for _, m := range raw {
+		cardID := coerceStr(m["card_id"])
+		company := coerceStr(m["company_name"])
+		ticker := coerceStr(m["ticker"])
+		videoID := coerceStr(m["video_id"])
+		for _, cat := range toStrList(m["upcoming_catalysts"]) {
+			if cat == "" {
+				continue
+			}
+			dedup := cardID + "|" + cat
+			if seen[dedup] {
+				continue
+			}
+			seen[dedup] = true
+			out.Items = append(out.Items, CatalystItem{
+				Ticker:      ticker,
+				CompanyName: company,
+				Catalyst:    cat,
+				CardID:      cardID,
+				VideoID:     videoID,
+			})
+		}
+	}
 	return nil, out, nil
 }

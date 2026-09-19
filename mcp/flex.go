@@ -7,7 +7,8 @@ import (
 
 // coerceStr turns a heterogeneous BSON-decoded value (string, number, array,
 // or nil) into a plain string. An array is joined with ", " so that a single
-// malformed document cannot break an entire tool response.
+// malformed document cannot break an entire tool response. Nested arrays are
+// flattened one level first.
 func coerceStr(v any) string {
 	switch t := v.(type) {
 	case nil:
@@ -21,9 +22,19 @@ func coerceStr(v any) string {
 	case int64:
 		return fmt.Sprintf("%d", t)
 	case []any:
+		// Flatten one level: sub-arrays are coerced to strings, scalars
+		// directly; then join with ", ".
 		parts := make([]string, 0, len(t))
 		for _, e := range t {
-			if e != nil {
+			if e == nil {
+				continue
+			}
+			switch ee := e.(type) {
+			case []any:
+				if s := coerceStr(ee); s != "" {
+					parts = append(parts, s)
+				}
+			default:
 				if s := coerceStr(e); s != "" {
 					parts = append(parts, s)
 				}
@@ -37,7 +48,7 @@ func coerceStr(v any) string {
 
 // toStrList turns a heterogeneous BSON-decoded value into a string slice:
 // an array becomes the slice, a scalar becomes a single-element slice, and
-// nil becomes an empty slice.
+// nil becomes an empty slice. Nested arrays (e.g. [[...]]) are flattened.
 func toStrList(v any) []string {
 	switch t := v.(type) {
 	case nil:
@@ -45,6 +56,15 @@ func toStrList(v any) []string {
 	case []any:
 		out := make([]string, 0, len(t))
 		for _, e := range t {
+			// Flatten one level: if an element is itself a list, append its
+			// coerced string rather than treating the whole sub-list as one
+			// element. This handles the bot's [[...]] storage shape.
+			if _, isList := e.([]any); isList {
+				if s := coerceStr(e); s != "" {
+					out = append(out, s)
+				}
+				continue
+			}
 			if e != nil {
 				out = append(out, coerceStr(e))
 			}
@@ -123,3 +143,38 @@ func toBool(v any) bool {
 		return false
 	}
 }
+
+// ── Stance classification ─────────────────────────────────────
+
+// ClassifyStance normalizes a raw LLM-generated stance string into one of
+// "bull", "bear", "neutral", or "other". The keyword lists cover the
+// vocabulary actually observed in the data (bullish/bearish/neutral) plus
+// common synonyms the LLM may emit.
+func ClassifyStance(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	if s == "" {
+		return "other"
+	}
+	for _, k := range bullKeywords {
+		if strings.Contains(s, k) {
+			return "bull"
+		}
+	}
+	for _, k := range bearKeywords {
+		if strings.Contains(s, k) {
+			return "bear"
+		}
+	}
+	for _, k := range neutralKeywords {
+		if strings.Contains(s, k) {
+			return "neutral"
+		}
+	}
+	return "other"
+}
+
+var (
+	bullKeywords    = []string{"bull", "long", "buy", "positive", "overweight", "accumulate", "outperform", "upside", "strong"}
+	bearKeywords    = []string{"bear", "short", "sell", "negative", "underweight", "underperform", "downside", "weak"}
+	neutralKeywords = []string{"neutral", "mixed", "wait", "sideways", "flat", "hold"}
+)
