@@ -12,7 +12,7 @@ func NewServer() *mcp.Server {
 		Name:        "trading-agent-memory",
 		Title:       "Trading Agent Memory",
 		Description: "Read-only MCP server over the btc_agent and stocks_agent MongoDB databases, with live price context. Outputs are third-party analyst opinions and historical scores, not financial advice.",
-		Version:     "0.2.0",
+		Version:     "0.3.0",
 	}
 	srv := mcp.NewServer(impl, nil)
 
@@ -70,6 +70,11 @@ func registerTools(srv *mcp.Server) {
 		Name:        "stocks_upcoming_catalysts",
 		Description: "All upcoming catalysts mentioned in stock cards over a window, grouped by ticker with source video. " + disclaimerText,
 	}, StocksUpcomingCatalystsHandler)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "get_stock_price_context",
+		Description: "Live prices for arbitrary tickers (Finnhub) with the most-recent analyst price target attached. Works for any stock, not just the ones already mentioned. " + disclaimerText,
+	}, GetStockPriceContext)
 
 	// Shared
 	mcp.AddTool(srv, &mcp.Tool{

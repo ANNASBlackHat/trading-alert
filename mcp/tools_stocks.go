@@ -97,8 +97,6 @@ func StocksGetTickerView(ctx context.Context, _ *sdkmcp.CallToolRequest, in Stoc
 	coll := s.stocks.Collection("stock_cards")
 	ticker := strings.ToUpper(in.Ticker)
 
-	// Match cards where the ticker field is set to this symbol, OR the
-	// company name contains it. Join processed_videos to scope the window.
 	pipe := mongo.Pipeline{
 		bson.D{{Key: "$match", Value: bson.M{"$or": []bson.M{
 			{"ticker": ticker},
@@ -122,9 +120,6 @@ func StocksGetTickerView(ctx context.Context, _ *sdkmcp.CallToolRequest, in Stoc
 	}
 	defer cursor.Close(ctx)
 
-	// Decode each document into a raw map, then hydrate the typed struct so
-	// heterogeneous LLM fields (string vs array) never cause a whole-batch
-	// decode failure.
 	var raw []map[string]any
 	if err := cursor.All(ctx, &raw); err != nil {
 		return nil, StocksTickerView{}, fmt.Errorf("decode stock_cards: %w", err)
@@ -175,7 +170,7 @@ type StocksTrendingArgs struct {
 	TopN      int `json:"top_n,omitempty" jsonschema:"how many tickers to return (default 10, cap 50)"`
 }
 
-// StocksTrending returns the most-mentioned tickers in the window with a
+// StocksTrendingHandler returns the most-mentioned tickers in the window with a
 // stance breakdown per ticker.
 func StocksTrendingHandler(ctx context.Context, _ *sdkmcp.CallToolRequest, in StocksTrendingArgs) (*sdkmcp.CallToolResult, StocksTrendingOut, error) {
 	s := instance()
@@ -263,8 +258,8 @@ type StocksUpcomingCatalystsArgs struct {
 	SinceDays int `json:"since_days,omitempty" jsonschema:"window in days (default 30)"`
 }
 
-// StocksUpcomingCatalysts returns all upcoming catalysts mentioned in stock
-// cards in the window, with their source card / ticker / company.
+// StocksUpcomingCatalystsHandler returns all upcoming catalysts mentioned in
+// stock cards in the window, with their source card / ticker / company.
 func StocksUpcomingCatalystsHandler(ctx context.Context, _ *sdkmcp.CallToolRequest, in StocksUpcomingCatalystsArgs) (*sdkmcp.CallToolResult, StocksUpcomingCatalystsOut, error) {
 	s := instance()
 	if s == nil {
@@ -275,8 +270,6 @@ func StocksUpcomingCatalystsHandler(ctx context.Context, _ *sdkmcp.CallToolReque
 	}
 	since := time.Now().UTC().AddDate(0, 0, -in.SinceDays).Format("2006-01-02")
 
-	// Fetch cards in the window (ticker, company, card_id, video_id,
-	// upcoming_catalysts). Use $match + $lookup + $unwind.
 	pipe := mongo.Pipeline{
 		bson.D{{Key: "$match", Value: bson.M{"schema_version": "v2"}}},
 		bson.D{{Key: "$lookup", Value: bson.M{
@@ -333,4 +326,99 @@ func StocksUpcomingCatalystsHandler(ctx context.Context, _ *sdkmcp.CallToolReque
 		}
 	}
 	return nil, out, nil
+}
+
+// ── get_stock_price_context ──────────────────────────────────
+
+// GetStockPriceContextArgs takes one or more tickers.
+type GetStockPriceContextArgs struct {
+	Tickers []string `json:"tickers" jsonschema:"tickers to quote, e.g. [NVDA, TSLA]"`
+}
+
+// StockPriceItem is one quoted ticker.
+type StockPriceItem struct {
+	Ticker         string     `json:"ticker"`
+	Price          *float64   `json:"price,omitempty"`
+	AsOf           *time.Time `json:"as_of,omitempty"`
+	QuoteError     *string    `json:"quote_error,omitempty"`
+	LastCardTarget *string    `json:"last_card_target,omitempty"`
+}
+
+// GetStockPriceContextOut is the response for get_stock_price_context.
+type GetStockPriceContextOut struct {
+	Prices     []StockPriceItem `json:"prices"`
+	LiveQuotes bool             `json:"live_quotes"`
+	Disclaimer string           `json:"disclaimer"`
+}
+
+// GetStockPriceContext returns live prices (Finnhub) for arbitrary tickers and
+// attaches the most-recent analyst price target from stock_cards when present.
+// This is the "any stock" hook: it pairs analyst calls with live market data.
+func GetStockPriceContext(ctx context.Context, _ *sdkmcp.CallToolRequest, in GetStockPriceContextArgs) (*sdkmcp.CallToolResult, GetStockPriceContextOut, error) {
+	s := instance()
+	out := GetStockPriceContextOut{Disclaimer: disclaimerText}
+
+	provider := quoteProvider()
+	if provider != nil && provider.IsEnabled() {
+		out.LiveQuotes = true
+	}
+
+	for _, rawTicker := range in.Tickers {
+		ticker := NormalizeSymbol(rawTicker)
+		item := StockPriceItem{Ticker: ticker}
+
+		if out.LiveQuotes {
+			price, err := provider.GetQuote(ticker)
+			if err == nil && price > 0 {
+				item.Price = &price
+				now := time.Now().UTC()
+				item.AsOf = &now
+			} else if err != nil {
+				e := err.Error()
+				item.QuoteError = &e
+			}
+		}
+
+		// Attach the most-recent analyst price target for this ticker.
+		if s != nil {
+			if target := latestCardTarget(ctx, s, ticker); target != "" {
+				item.LastCardTarget = &target
+			}
+		}
+		out.Prices = append(out.Prices, item)
+	}
+	return nil, out, nil
+}
+
+// latestCardTarget returns the forward_price_target_or_level from the most
+// recent card for a ticker, or "" when none exists.
+func latestCardTarget(ctx context.Context, s *Store, ticker string) string {
+	coll := s.stocks.Collection("stock_cards")
+	pipe := mongo.Pipeline{
+		bson.D{{Key: "$match", Value: bson.M{"ticker": ticker}}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "video_id", Value: -1}}}},
+		bson.D{{Key: "$limit", Value: int64(1)}},
+	}
+	cursor, err := coll.Aggregate(ctx, pipe)
+	if err != nil {
+		return ""
+	}
+	defer cursor.Close(ctx)
+	var raw []map[string]any
+	if err := cursor.All(ctx, &raw); err != nil || len(raw) == 0 {
+		return ""
+	}
+	c := hydrateStockCard(raw[0])
+	if c.ForwardPriceTargetOrLevel == nil {
+		return ""
+	}
+	return *c.ForwardPriceTargetOrLevel
+}
+
+// quoteProvider returns the package-level quote provider.
+func quoteProvider() *QuoteProvider {
+	if qp == nil {
+		qp = NewQuoteProvider()
+	}
+	return qp
 }

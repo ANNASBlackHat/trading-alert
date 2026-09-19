@@ -247,6 +247,11 @@ type DataQuality struct {
 	MinSampleWarning      *string `json:"min_sample_warning,omitempty"`
 }
 
+// ── Package-level shared state ─────────────────────────────────
+
+// qp is the lazy-initialized quote provider (live stock prices).
+var qp *QuoteProvider
+
 // ── Phase 2 aggregation result shapes ─────────────────────────
 
 // ScoreboardGroup is one aggregation bucket (by channel, confidence, or timeframe).

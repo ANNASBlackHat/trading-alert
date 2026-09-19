@@ -94,3 +94,24 @@ func TestStocksUpcomingCatalystsLive(t *testing.T) {
 		t.Logf("  %s / %s: %s", c.Ticker, c.CompanyName, c.Catalyst)
 	}
 }
+
+// TestGetStockPriceContextLive exercises the arbitrary-ticker price tool.
+// It does not require FINNHUB_API_KEY — when absent, live_quotes is false
+// and the tool still returns the analyst target.
+func TestGetStockPriceContextLive(t *testing.T) {
+	ctx := initStoreForTest(t)
+	_, out, err := GetStockPriceContext(ctx, &sdkmcp.CallToolRequest{}, GetStockPriceContextArgs{
+		Tickers: []string{"NVDA", "TSLA"},
+	})
+	if err != nil {
+		t.Fatalf("GetStockPriceContext: %v", err)
+	}
+	t.Logf("live_quotes=%v", out.LiveQuotes)
+	for _, p := range out.Prices {
+		target := ""
+		if p.LastCardTarget != nil {
+			target = *p.LastCardTarget
+		}
+		t.Logf("  %s target=%q", p.Ticker, target)
+	}
+}
