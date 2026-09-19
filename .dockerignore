@@ -1,0 +1,25 @@
+# OS / editor noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Git / CI internals
+.git/
+.gitlab-ci.yml
+
+# Local config & secrets (keep .env out of the build context)
+.env
+config.yaml
+bot.log
+
+# Locally-built binaries (would shadow /app/trading-bot, /app/trading-mcp)
+cmd/bot/bot
+cmd/mcp/trading-mcp
+trading-bot
+trading-mcp
+
+# Test / build artifacts
+*.test
+*.out
+coverage.*
