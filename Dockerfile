@@ -13,8 +13,7 @@ ENV CGO_ENABLED=0 \
     GOARCH=amd64
 
 # Build the applications
-RUN go build -o trading-bot ./cmd/bot \
- && go build -o trading-mcp ./cmd/mcp
+RUN go build -o trading-bot ./cmd/bot && go build -o trading-mcp ./cmd/mcp
 
 
 # Final Minimal Stage
