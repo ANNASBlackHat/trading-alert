@@ -12,8 +12,9 @@ ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64
 
-# Build the application
-RUN go build -o trading-bot ./cmd/bot
+# Build the applications
+RUN go build -o trading-bot ./cmd/bot \
+ && go build -o trading-mcp ./cmd/mcp
 
 
 # Final Minimal Stage
@@ -25,8 +26,9 @@ WORKDIR /app
 # Install tzdata just in case Go needs correct timezone handling for signal logging
 RUN apk --no-cache add ca-certificates tzdata
 
-# Copy the compiled binary from the builder stage
+# Copy the compiled binaries from the builder stage
 COPY --from=builder /app/trading-bot /app/trading-bot
+COPY --from=builder /app/trading-mcp /app/trading-mcp
 
 # Start the bot
 ENTRYPOINT ["/app/trading-bot"]
